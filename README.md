@@ -2,7 +2,7 @@
 
 > Export & translate YouTube transcripts as PDF, DOCX, or TXT — in one click.
 
-**Built by Kowsik Ratnagiri**
+**Built by Kowsik Ratnagiri** &nbsp;|&nbsp; ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Version](https://img.shields.io/badge/version-3.2-red) ![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Firefox-blue)
 
 ---
 
@@ -103,3 +103,11 @@ Built with ☕ and too many YouTube videos.
 | v3.2 | Updated for YouTube 2026 UI, fixed timestamp parsing, debug mode |
 | v3.0 | Added DOCX, TXT, translation, timestamp toggle, copy to clipboard |
 | v1.0 | Initial release — PDF export only |
+
+---
+
+## License
+
+MIT License — © 2025 Kowsik Ratnagiri
+
+Free to use, modify and distribute. See [LICENSE](LICENSE) for full details.
