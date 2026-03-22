@@ -1,0 +1,9 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Zip files
+*.zip
+
+# Temp folders
+{icons}/

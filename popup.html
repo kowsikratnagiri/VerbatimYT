@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>VerbatimYT</title>
+  <script src="jspdf.min.js"></script>
+  <script src="docx.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 340px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      padding: 16px;
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(160deg,#ff2d2d,#cc0000);
+      border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    .logo h1 { font-size: 13px; font-weight: 700; }
+    .logo p  { font-size: 10px; color: #555; margin-top: 1px; }
+
+    #status {
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
+      padding: 10px 12px; font-size: 11.5px; color: #666;
+      margin-bottom: 12px; min-height: 40px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #status.success { color: #4caf50; border-color: #1e3d1e; }
+    #status.error   { color: #f44336; border-color: #3d1e1e; }
+    #status.loading { color: #4a9eff; border-color: #1e2d3d; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    #status.loading .dot { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    .section-label {
+      font-size: 10px; color: #444; margin-bottom: 6px;
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    /* Language + translate row */
+    .lang-row { display: flex; gap: 6px; margin-bottom: 10px; }
+    .lang-row select {
+      flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a;
+      color: #ccc; border-radius: 7px; padding: 7px 8px;
+      font-size: 11px; cursor: pointer; appearance: none;
+    }
+    .lang-row select:focus { outline: none; border-color: #cc0000; }
+
+    /* Translate to */
+    .translate-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
+    .translate-row select {
+      flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a;
+      color: #ccc; border-radius: 7px; padding: 7px 8px;
+      font-size: 11px; cursor: pointer; appearance: none;
+    }
+    .translate-toggle {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: #666; cursor: pointer; white-space: nowrap;
+    }
+    .translate-toggle input { accent-color: #cc0000; cursor: pointer; }
+
+    /* Toggles row */
+    .toggle-row {
+      display: flex; gap: 8px; margin-bottom: 10px;
+    }
+    .toggle-pill {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+      background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 7px; padding: 7px 6px;
+      font-size: 11px; color: #666; cursor: pointer;
+      transition: all 0.15s; user-select: none;
+    }
+    .toggle-pill input { accent-color: #cc0000; cursor: pointer; width: 13px; height: 13px; }
+    .toggle-pill.active { border-color: #cc000055; color: #ccc; }
+
+    /* Format grid */
+    .format-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 10px; }
+    .fmt-btn {
+      padding: 8px 4px; background: #1a1a1a; border: 1px solid #2a2a2a;
+      border-radius: 7px; color: #666; font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+    .fmt-btn:hover { background: #222; border-color: #444; color: #ccc; }
+    .fmt-btn.active { background: #1a0000; border-color: #cc0000; color: #ff4444; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    #exportBtn {
+      flex: 1; padding: 11px; background: #cc0000;
+      color: #fff; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+    }
+    #exportBtn:hover:not(:disabled) { background: #e50000; }
+    #exportBtn:disabled { background: #2a2a2a; color: #444; cursor: not-allowed; }
+
+    #copyBtn {
+      padding: 11px 14px; background: #1a1a1a; border: 1px solid #2a2a2a;
+      color: #888; border-radius: 8px; font-size: 12px;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    #copyBtn:hover:not(:disabled) { background: #222; border-color: #555; color: #ccc; }
+    #copyBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .footer { font-size: 10px; color: #2a2a2a; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="logo">
+    <div class="logo-icon">▶</div>
+    <div>
+      <h1>VerbatimYT</h1>
+      <p>Export & translate YouTube transcripts</p>
+    </div>
+  </div>
+
+  <div id="status">
+    <span class="dot"></span>
+    <span id="status-text">Open a YouTube video to get started.</span>
+  </div>
+
+  <!-- Caption language -->
+  <div class="section-label">Caption language</div>
+  <div class="lang-row">
+    <select id="captionLang">
+      <option value="">⏳ Loading languages...</option>
+    </select>
+    <button id="retryBtn" title="Retry detecting captions" style="padding:7px 10px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;color:#666;cursor:pointer;font-size:13px;transition:all 0.15s">🔄</button>
+  </div>
+
+  <!-- Translate to -->
+  <div class="section-label">Translate transcript</div>
+  <div class="translate-row">
+    <select id="translateLang">
+      <option value="">No translation</option>
+      <option value="en">🇬🇧 English</option>
+      <option value="es">🇪🇸 Spanish</option>
+      <option value="fr">🇫🇷 French</option>
+      <option value="de">🇩🇪 German</option>
+      <option value="hi">🇮🇳 Hindi</option>
+      <option value="ar">🇸🇦 Arabic</option>
+      <option value="zh">🇨🇳 Chinese (Simplified)</option>
+      <option value="ja">🇯🇵 Japanese</option>
+      <option value="ko">🇰🇷 Korean</option>
+      <option value="pt">🇧🇷 Portuguese</option>
+      <option value="ru">🇷🇺 Russian</option>
+      <option value="it">🇮🇹 Italian</option>
+      <option value="tr">🇹🇷 Turkish</option>
+      <option value="nl">🇳🇱 Dutch</option>
+      <option value="pl">🇵🇱 Polish</option>
+      <option value="ta">🇮🇳 Tamil</option>
+      <option value="te">🇮🇳 Telugu</option>
+      <option value="ml">🇮🇳 Malayalam</option>
+      <option value="bn">🇧🇩 Bengali</option>
+      <option value="id">🇮🇩 Indonesian</option>
+    </select>
+  </div>
+
+  <!-- Options -->
+  <div class="section-label">Options</div>
+  <div class="toggle-row">
+    <label class="toggle-pill active" id="tsTogglePill">
+      <input type="checkbox" id="keepTimestamps"> Keep timestamps
+    </label>
+  </div>
+
+  <!-- Format -->
+  <div class="section-label">Export format</div>
+  <div class="format-grid">
+    <button class="fmt-btn active" data-fmt="pdf">PDF</button>
+    <button class="fmt-btn" data-fmt="docx">DOCX</button>
+    <button class="fmt-btn" data-fmt="txt">TXT</button>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="btn-row">
+    <button id="exportBtn" disabled>Export</button>
+    <button id="copyBtn" disabled>📋 Copy</button>
+  </div>
+
+  <!-- About section -->
+  <div style="margin:10px 0 0;background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:10px 14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:700;color:#ff4444;letter-spacing:0.5px">VerbatimYT</span>
+      <span style="font-size:9px;color:#333;font-family:'Segoe UI',monospace;background:#1a1a1a;padding:2px 7px;border-radius:10px;border:1px solid #222">v3.0</span>
+    </div>
+    <div style="font-size:10px;color:#555;line-height:1.6">
+      YouTube Transcript Exporter<br>
+      <span style="color:#444">Built by </span><span style="color:#666;font-weight:600">Kowsik Ratnagiri</span>
+    </div>
+    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #1a1a1a;font-size:9px;color:#333">
+      PDF · DOCX · TXT · Translation · 20 languages
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
