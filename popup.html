@@ -4,201 +4,396 @@
   <meta charset="UTF-8"/>
   <title>VerbatimYT</title>
   <script src="jspdf.min.js"></script>
+  <script src="jszip.min.js"></script>
   <script src="docx.min.js"></script>
   <style>
+    :root {
+      --accent:       #ff3333;
+      --accent-dim:   rgba(255,51,51,0.15);
+      --accent-border:rgba(255,51,51,0.35);
+      --bg:           #0d0d0d;
+      --surface:      #161616;
+      --surface2:     #1e1e1e;
+      --border:       #2a2a2a;
+      --border2:      #333;
+      --text:         #f0f0f0;
+      --muted:        #888;
+      --label:        #bbb;
+    }
+
+    .oceanic {
+      --accent:        #00c9b1;
+      --accent-dim:    rgba(0,201,177,0.12);
+      --accent-border: rgba(0,201,177,0.35);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       width: 340px;
-      font-family: 'Segoe UI', sans-serif;
-      background: #0f0f0f;
-      color: #fff;
-      padding: 16px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 0;
+      font-size: 13px;
     }
 
-    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    /* ── Header ── */
+    .header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+
     .logo-icon {
-      width: 34px; height: 34px;
-      background: linear-gradient(160deg,#ff2d2d,#cc0000);
-      border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px;
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.3s;
+      flex-shrink: 0;
     }
-    .logo h1 { font-size: 13px; font-weight: 700; }
-    .logo p  { font-size: 10px; color: #555; margin-top: 1px; }
 
-    #status {
-      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
-      padding: 10px 12px; font-size: 11.5px; color: #666;
-      margin-bottom: 12px; min-height: 40px;
-      display: flex; align-items: center; gap: 8px;
+    .logo h1 { font-size: 14px; font-weight: 700; color: var(--text); }
+    .logo p  { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+    /* Oceanic toggle button */
+    .theme-toggle {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 10px; color: var(--muted);
+      transition: all 0.2s;
+      white-space: nowrap;
     }
-    #status.success { color: #4caf50; border-color: #1e3d1e; }
-    #status.error   { color: #f44336; border-color: #3d1e1e; }
-    #status.loading { color: #4a9eff; border-color: #1e2d3d; }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--text); }
+    .theme-toggle .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      transition: background 0.3s;
+    }
+
+    /* ── Body ── */
+    .body { padding: 14px 16px; }
+
+    /* ── Status ── */
+    #status {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 13px;
+      font-size: 12px; color: var(--muted);
+      margin-bottom: 13px;
+      min-height: 40px;
+      display: flex; align-items: center; gap: 8px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #status.success { color: #4ade80; border-color: rgba(74,222,128,0.3); }
+    #status.error   { color: #f87171; border-color: rgba(248,113,113,0.3); }
+    #status.loading { color: #60a5fa; border-color: rgba(96,165,250,0.3); }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
     #status.loading .dot { animation: pulse 1s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
+    /* ── Section labels ── */
     .section-label {
-      font-size: 10px; color: #444; margin-bottom: 6px;
-      text-transform: uppercase; letter-spacing: 0.6px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--label);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
     }
 
-    /* Language + translate row */
-    .lang-row { display: flex; gap: 6px; margin-bottom: 10px; }
-    .lang-row select {
-      flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a;
-      color: #ccc; border-radius: 7px; padding: 7px 8px;
-      font-size: 11px; cursor: pointer; appearance: none;
-    }
-    .lang-row select:focus { outline: none; border-color: #cc0000; }
+    /* ── Lang row ── */
+    .lang-row { display: flex; gap: 6px; margin-bottom: 12px; }
 
-    /* Translate to */
-    .translate-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
-    .translate-row select {
-      flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a;
-      color: #ccc; border-radius: 7px; padding: 7px 8px;
-      font-size: 11px; cursor: pointer; appearance: none;
+    .lang-row select, .translate-row select {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s;
+      appearance: none;
     }
-    .translate-toggle {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 11px; color: #666; cursor: pointer; white-space: nowrap;
-    }
-    .translate-toggle input { accent-color: #cc0000; cursor: pointer; }
+    .lang-row select:focus,
+    .translate-row select:focus { border-color: var(--accent); }
 
-    /* Toggles row */
-    .toggle-row {
-      display: flex; gap: 8px; margin-bottom: 10px;
+    .retry-btn {
+      padding: 8px 11px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
     }
+    .retry-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Translate row ── */
+    .translate-row { margin-bottom: 12px; }
+
+    /* ── Options ── */
+    .toggle-row { display: flex; gap: 7px; margin-bottom: 12px; }
+
     .toggle-pill {
-      flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
-      background: #1a1a1a; border: 1px solid #2a2a2a;
-      border-radius: 7px; padding: 7px 6px;
-      font-size: 11px; color: #666; cursor: pointer;
-      transition: all 0.15s; user-select: none;
+      flex: 1;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 8px 6px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
     }
-    .toggle-pill input { accent-color: #cc0000; cursor: pointer; width: 13px; height: 13px; }
-    .toggle-pill.active { border-color: #cc000055; color: #ccc; }
+    .toggle-pill input {
+      accent-color: var(--accent);
+      cursor: pointer;
+      width: 13px; height: 13px;
+    }
+    .toggle-pill.active {
+      background: var(--accent-dim);
+      border-color: var(--accent-border);
+      color: var(--text);
+    }
 
-    /* Format grid */
-    .format-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 10px; }
+    /* ── Format grid ── */
+    .format-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
     .fmt-btn {
-      padding: 8px 4px; background: #1a1a1a; border: 1px solid #2a2a2a;
-      border-radius: 7px; color: #666; font-size: 11px; font-weight: 600;
-      cursor: pointer; transition: all 0.15s; text-align: center;
+      padding: 9px 4px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 12px; font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      letter-spacing: 0.3px;
     }
-    .fmt-btn:hover { background: #222; border-color: #444; color: #ccc; }
-    .fmt-btn.active { background: #1a0000; border-color: #cc0000; color: #ff4444; }
+    .fmt-btn:hover { border-color: var(--border); color: var(--text); }
+    .fmt-btn.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
 
-    /* Buttons */
-    .btn-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    /* ── Action buttons ── */
+    .btn-row { display: flex; gap: 7px; margin-bottom: 12px; }
+
     #exportBtn {
-      flex: 1; padding: 11px; background: #cc0000;
-      color: #fff; border: none; border-radius: 8px;
-      font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+      flex: 1; padding: 11px;
+      background: var(--accent);
+      color: #fff; border: none;
+      border-radius: 9px;
+      font-size: 13px; font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.2px;
     }
-    #exportBtn:hover:not(:disabled) { background: #e50000; }
-    #exportBtn:disabled { background: #2a2a2a; color: #444; cursor: not-allowed; }
+    #exportBtn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+    #exportBtn:disabled { background: var(--surface2); color: #444; cursor: not-allowed; transform: none; }
 
     #copyBtn {
-      padding: 11px 14px; background: #1a1a1a; border: 1px solid #2a2a2a;
-      color: #888; border-radius: 8px; font-size: 12px;
-      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      border-radius: 9px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
     }
-    #copyBtn:hover:not(:disabled) { background: #222; border-color: #555; color: #ccc; }
+    #copyBtn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
     #copyBtn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    .footer { font-size: 10px; color: #2a2a2a; text-align: center; }
+    /* ── About ── */
+    .about {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 13px;
+    }
+
+    .about-top {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .about-name {
+      font-size: 12px; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.3px;
+      transition: color 0.3s;
+    }
+
+    .version-badge {
+      font-size: 9px; color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-family: monospace;
+    }
+
+    .about-sub {
+      font-size: 10px; color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .about-sub a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    .about-sub a:hover { opacity: 0.8; text-decoration: underline; }
+
+    .about-footer {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+      font-size: 9px; color: #444;
+    }
   </style>
 </head>
 <body>
-  <div class="logo">
-    <div class="logo-icon">▶</div>
-    <div>
-      <h1>VerbatimYT</h1>
-      <p>Export & translate YouTube transcripts</p>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Play triangle -->
+          <polygon points="4,3 4,13 12,8" fill="white"/>
+          <!-- Three lines (transcript) -->
+          <rect x="14" y="4" width="4" height="1.8" rx="0.9" fill="white"/>
+          <rect x="14" y="8.1" width="4" height="1.8" rx="0.9" fill="white"/>
+          <rect x="14" y="12.2" width="4" height="1.8" rx="0.9" fill="white"/>
+        </svg>
+      </div>
+      <div>
+        <h1>VerbatimYT</h1>
+        <p>Export &amp; translate YouTube transcripts</p>
+      </div>
     </div>
+    <button class="theme-toggle" id="themeToggle">
+      <span class="dot"></span>
+      Oceanic
+    </button>
   </div>
 
-  <div id="status">
-    <span class="dot"></span>
-    <span id="status-text">Open a YouTube video to get started.</span>
-  </div>
+  <div class="body">
 
-  <!-- Caption language -->
-  <div class="section-label">Caption language</div>
-  <div class="lang-row">
-    <select id="captionLang">
-      <option value="">⏳ Loading languages...</option>
-    </select>
-    <button id="retryBtn" title="Retry detecting captions" style="padding:7px 10px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;color:#666;cursor:pointer;font-size:13px;transition:all 0.15s">🔄</button>
-  </div>
-
-  <!-- Translate to -->
-  <div class="section-label">Translate transcript</div>
-  <div class="translate-row">
-    <select id="translateLang">
-      <option value="">No translation</option>
-      <option value="en">🇬🇧 English</option>
-      <option value="es">🇪🇸 Spanish</option>
-      <option value="fr">🇫🇷 French</option>
-      <option value="de">🇩🇪 German</option>
-      <option value="hi">🇮🇳 Hindi</option>
-      <option value="ar">🇸🇦 Arabic</option>
-      <option value="zh">🇨🇳 Chinese (Simplified)</option>
-      <option value="ja">🇯🇵 Japanese</option>
-      <option value="ko">🇰🇷 Korean</option>
-      <option value="pt">🇧🇷 Portuguese</option>
-      <option value="ru">🇷🇺 Russian</option>
-      <option value="it">🇮🇹 Italian</option>
-      <option value="tr">🇹🇷 Turkish</option>
-      <option value="nl">🇳🇱 Dutch</option>
-      <option value="pl">🇵🇱 Polish</option>
-      <option value="ta">🇮🇳 Tamil</option>
-      <option value="te">🇮🇳 Telugu</option>
-      <option value="ml">🇮🇳 Malayalam</option>
-      <option value="bn">🇧🇩 Bengali</option>
-      <option value="id">🇮🇩 Indonesian</option>
-    </select>
-  </div>
-
-  <!-- Options -->
-  <div class="section-label">Options</div>
-  <div class="toggle-row">
-    <label class="toggle-pill active" id="tsTogglePill">
-      <input type="checkbox" id="keepTimestamps"> Keep timestamps
-    </label>
-    <label class="toggle-pill" id="rawTogglePill">
-      <input type="checkbox" id="rawMode"> Raw text
-    </label>
-  </div>
-
-  <!-- Format -->
-  <div class="section-label">Export format</div>
-  <div class="format-grid">
-    <button class="fmt-btn active" data-fmt="pdf">PDF</button>
-    <button class="fmt-btn" data-fmt="docx">DOCX</button>
-    <button class="fmt-btn" data-fmt="txt">TXT</button>
-  </div>
-
-  <!-- Action buttons -->
-  <div class="btn-row">
-    <button id="exportBtn" disabled>Export</button>
-    <button id="copyBtn" disabled>📋 Copy</button>
-  </div>
-
-  <!-- About section -->
-  <div style="margin:10px 0 0;background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:10px 14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-size:11px;font-weight:700;color:#ff4444;letter-spacing:0.5px">VerbatimYT</span>
-      <span style="font-size:9px;color:#333;font-family:'Segoe UI',monospace;background:#1a1a1a;padding:2px 7px;border-radius:10px;border:1px solid #222">v3.0</span>
+    <!-- Status -->
+    <div id="status">
+      <span class="dot"></span>
+      <span id="status-text">Open a YouTube video to get started.</span>
     </div>
-    <div style="font-size:10px;color:#555;line-height:1.6">
-      YouTube Transcript Exporter<br>
-      <span style="color:#444">Built by </span><span style="color:#666;font-weight:600">Kowsik Ratnagiri</span>
+
+    <!-- Caption language -->
+    <div class="section-label">Caption Language</div>
+    <div class="lang-row">
+      <select id="captionLang">
+        <option value="">⏳ Loading...</option>
+      </select>
+      <button class="retry-btn" id="retryBtn" title="Click to retry | Hold 2s for debug scan">🔄</button>
     </div>
-    <div style="margin-top:6px;padding-top:6px;border-top:1px solid #1a1a1a;font-size:9px;color:#333">
-      PDF · DOCX · TXT · Translation · 20 languages
+
+    <!-- Translate -->
+    <div class="section-label">Translate Transcript</div>
+    <div class="translate-row">
+      <select id="translateLang">
+        <option value="">No translation</option>
+        <option value="en">🇬🇧 English</option>
+        <option value="es">🇪🇸 Spanish</option>
+        <option value="fr">🇫🇷 French</option>
+        <option value="de">🇩🇪 German</option>
+        <option value="hi">🇮🇳 Hindi</option>
+        <option value="ar">🇸🇦 Arabic</option>
+        <option value="zh">🇨🇳 Chinese (Simplified)</option>
+        <option value="ja">🇯🇵 Japanese</option>
+        <option value="ko">🇰🇷 Korean</option>
+        <option value="pt">🇧🇷 Portuguese</option>
+        <option value="ru">🇷🇺 Russian</option>
+        <option value="it">🇮🇹 Italian</option>
+        <option value="tr">🇹🇷 Turkish</option>
+        <option value="nl">🇳🇱 Dutch</option>
+        <option value="pl">🇵🇱 Polish</option>
+        <option value="ta">🇮🇳 Tamil</option>
+        <option value="te">🇮🇳 Telugu</option>
+        <option value="ml">🇮🇳 Malayalam</option>
+        <option value="bn">🇧🇩 Bengali</option>
+        <option value="id">🇮🇩 Indonesian</option>
+      </select>
     </div>
+
+    <!-- Options -->
+    <div class="section-label">Options</div>
+    <div class="toggle-row">
+      <label class="toggle-pill active" id="tsTogglePill">
+        <input type="checkbox" id="keepTimestamps"> Keep timestamps
+      </label>
+      <label class="toggle-pill" id="rawTogglePill">
+        <input type="checkbox" id="rawMode"> Raw text
+      </label>
+    </div>
+
+    <!-- Format -->
+    <div class="section-label">Export Format</div>
+    <div class="format-grid">
+      <button class="fmt-btn active" data-fmt="pdf">PDF</button>
+      <button class="fmt-btn" data-fmt="epub">EPUB</button>
+      <button class="fmt-btn" data-fmt="docx">DOCX</button>
+      <button class="fmt-btn" data-fmt="txt">TXT</button>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="btn-row">
+      <button id="exportBtn" disabled>Export Transcript</button>
+      <button id="copyBtn" disabled>📋 Copy</button>
+    </div>
+
+    <!-- About -->
+    <div class="about">
+      <div class="about-top">
+        <span class="about-name">VerbatimYT</span>
+        <span class="version-badge">v3.3</span>
+      </div>
+      <div class="about-sub">
+        YouTube Transcript Exporter<br>
+        Built by <a href="https://github.com/kowsikratnagiri" target="_blank">Kowsik Ratnagiri</a>
+      </div>
+      <div class="about-footer">PDF · DOCX · TXT · Translation · 20 languages</div>
+    </div>
+
   </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

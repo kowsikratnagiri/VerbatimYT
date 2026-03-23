@@ -43,6 +43,19 @@ async function getActiveTab() {
 
 document.getElementById("retryBtn").addEventListener("click", () => init());
 
+// ── Oceanic theme toggle ───────────────────────────────────────────────────
+const themeToggle = document.getElementById("themeToggle");
+let isOceanic = false;
+
+themeToggle.addEventListener("click", () => {
+  isOceanic = !isOceanic;
+  document.body.classList.toggle("oceanic", isOceanic);
+  themeToggle.querySelector(".dot").style.background = "";
+  themeToggle.innerHTML = isOceanic
+    ? '<span class="dot"></span> Default'
+    : '<span class="dot"></span> Oceanic';
+});
+
 // ── Debug: scan page and report exactly what's there ──────────────────────
 async function debugScan() {
   const tab = await getActiveTab();
@@ -322,14 +335,36 @@ function formatParagraphs(text) {
 async function getPageInfo(tab) {
   const r = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    func: () => ({
-      title: document.querySelector("h1.ytd-watch-metadata yt-formatted-string")?.textContent?.trim()
+    func: () => {
+      const title = document.querySelector("h1.ytd-watch-metadata yt-formatted-string")?.textContent?.trim()
         || document.querySelector("h1 yt-formatted-string")?.textContent?.trim()
-        || document.title.replace(" - YouTube", "").trim(),
-      channel: document.querySelector("#owner #channel-name a")?.textContent?.trim()
+        || document.title.replace(" - YouTube", "").trim();
+
+      const channel = document.querySelector("#owner #channel-name a")?.textContent?.trim()
         || document.querySelector("#channel-name a")?.textContent?.trim()
-        || "Unknown Channel",
-    }),
+        || "Unknown Channel";
+
+      const videoUrl = window.location.href;
+      const videoId = new URLSearchParams(window.location.search).get("v") || "";
+      const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "";
+
+      // Extract YouTube chapters from description
+      const chapters = [];
+      const descEl = document.querySelector("#description-inline-expander, #description");
+      if (descEl) {
+        const text = descEl.innerText || "";
+        const lines = text.split("\n");
+        lines.forEach(line => {
+          // Chapter format: "0:00 Introduction" or "00:00 Introduction"
+          const match = line.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)/);
+          if (match) {
+            chapters.push({ time: match[1], title: match[2].trim() });
+          }
+        });
+      }
+
+      return { title, channel, videoUrl, videoId, thumbnailUrl, chapters };
+    },
   });
   return r[0].result;
 }
@@ -338,7 +373,7 @@ async function getTranscript() {
   const tab = await getActiveTab();
   const keepTs = keepTsEl.checked;
   const translateTo = translateLangEl.value;
-  const { title, channel } = await getPageInfo(tab);
+  const { title, channel, videoUrl, videoId, thumbnailUrl, chapters } = await getPageInfo(tab);
 
   // Step 1: Click Show Transcript
   setStatus("Opening transcript panel...", "loading");
@@ -391,7 +426,7 @@ async function getTranscript() {
   if (!text || text.length < 10) throw new Error("Transcript appears to be empty.");
   if (translateTo) text = await translateText(text, translateTo);
 
-  return { title, channel, text };
+  return { title, channel, text, videoUrl, videoId, thumbnailUrl, chapters };
 }
 
 async function translateText(text, targetLang) {
@@ -421,11 +456,12 @@ exportBtn.addEventListener("click", async () => {
   exportBtn.disabled = true;
   copyBtn.disabled = true;
   try {
-    const { title, channel, text } = await getTranscript();
+    const { title, channel, text, videoUrl, videoId, thumbnailUrl, chapters } = await getTranscript();
     setStatus(`Generating ${selectedFormat.toUpperCase()}...`, "loading");
-    if (selectedFormat === "pdf")  buildPDF(title, channel, text);
+    if (selectedFormat === "pdf")  buildPDF(title, channel, text, videoUrl, thumbnailUrl, chapters);
     if (selectedFormat === "docx") await buildDOCX(title, channel, text);
     if (selectedFormat === "txt")  buildTXT(title, channel, text);
+    if (selectedFormat === "epub") await buildEPUB(title, channel, text, videoUrl, thumbnailUrl, chapters);
     setStatus(`✓ ${selectedFormat.toUpperCase()} downloaded!`, "success");
   } catch(e) {
     setStatus(e.message || "Export failed.", "error");
@@ -448,32 +484,78 @@ copyBtn.addEventListener("click", async () => {
   copyBtn.disabled = false;
 });
 
-function buildPDF(title, channel, fullText) {
+function buildPDF(title, channel, fullText, videoUrl, thumbnailUrl, chapters) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 20, maxW = pageW - margin * 2;
 
+  // ── Word count + reading time ──────────────────────────────────────────
+  const wordCount = fullText.split(/\s+/).filter(Boolean).length;
+  const readingMins = Math.ceil(wordCount / 200);
+
+  // ── Red header ─────────────────────────────────────────────────────────
   doc.setFillColor(204, 0, 0);
-  doc.rect(0, 0, pageW, 36, "F");
+  doc.rect(0, 0, pageW, 42, "F");
+
+  // VerbatimYT badge
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
   doc.setTextColor(255, 180, 180);
   doc.text("VerbatimYT", pageW - margin, 8, { align: "right" });
+
+  // Clickable video title
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text(doc.splitTextToSize(title, maxW - 30).slice(0, 2), margin, 14);
+  const titleLines = doc.splitTextToSize(title, maxW - 30).slice(0, 2);
+  doc.text(titleLines, margin, 14);
+  // Add clickable link over the title text
+  if (videoUrl) {
+    doc.link(margin, 7, maxW - 30, 14, { url: videoUrl });
+  }
+
+  // Channel
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.text(`Channel: ${channel}`, margin, 28);
+
+  // Date + word count + reading time
   const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   doc.setTextColor(210, 210, 210);
   doc.setFontSize(9);
   doc.text(dateStr, pageW - margin, 28, { align: "right" });
+  doc.text(`${wordCount.toLocaleString()} words · ${readingMins} min read`, margin, 37);
 
-  let y = 48;
+  // ── Chapters section (if available) ───────────────────────────────────
+  let y = 52;
+  if (chapters && chapters.length > 0) {
+    doc.setTextColor(40, 40, 40);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Chapters", margin, y); y += 3;
+    doc.setDrawColor(180, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageW - margin, y); y += 7;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(60, 60, 60);
+    chapters.forEach(ch => {
+      if (y + 5 > pageH - margin) { doc.addPage(); y = margin; }
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(180, 0, 0);
+      doc.text(ch.time, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(40, 40, 40);
+      doc.text(ch.title, margin + 18, y);
+      y += 5;
+    });
+    y += 5;
+  }
+
+  // ── Transcript heading ─────────────────────────────────────────────────
   doc.setTextColor(40, 40, 40);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
@@ -482,24 +564,22 @@ function buildPDF(title, channel, fullText) {
   doc.setLineWidth(0.5);
   doc.line(margin, y, pageW - margin, y); y += 8;
 
+  // ── Body ───────────────────────────────────────────────────────────────
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(30, 30, 30);
 
-  // Split by double newline for paragraphs, single for timestamps
-  const isTimestampMode = keepTsEl.checked;
   const sections = fullText.split("\n\n").filter(Boolean);
-
   for (const section of sections) {
     const lines = doc.splitTextToSize(section, maxW);
     for (const line of lines) {
       if (y + 6 > pageH - margin) { doc.addPage(); y = margin; }
       doc.text(line, margin, y); y += 6;
     }
-    // Add paragraph spacing (extra gap between paragraphs)
     if (sections.length > 1) y += 3;
   }
 
+  // ── Footer every page ──────────────────────────────────────────────────
   const total = doc.internal.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     doc.setPage(i);
@@ -508,7 +588,200 @@ function buildPDF(title, channel, fullText) {
     doc.text("VerbatimYT by Kowsik Ratnagiri", margin, pageH - 8);
     doc.text(`Page ${i} of ${total}`, pageW - margin, pageH - 8, { align: "right" });
   }
+
   doc.save(`${title.replace(/[^a-z0-9]/gi, "_").substring(0, 50)}_transcript.pdf`);
+}
+
+// ── EPUB ───────────────────────────────────────────────────────────────────
+async function buildEPUB(title, channel, fullText, videoUrl, thumbnailUrl, chapters) {
+  const zip = new JSZip();
+  const safeTitle = title.replace(/[^a-z0-9 ]/gi, " ").trim();
+  const date = new Date().toISOString().split("T")[0];
+  const wordCount = fullText.split(/\s+/).filter(Boolean).length;
+  const readingMins = Math.ceil(wordCount / 200);
+  const uid = `verbatimyt-${Date.now()}`;
+
+  // Split into paragraphs
+  const paragraphs = fullText.split("\n\n").filter(p => p.trim().length > 0);
+
+  // ── Fetch thumbnail as base64 ─────────────────────────────────────────
+  let thumbBase64 = "";
+  let thumbMediaType = "image/jpeg";
+  if (thumbnailUrl) {
+    try {
+      const resp = await fetch(thumbnailUrl);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        thumbBase64 = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(",")[1]);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch(e) {
+      // Thumbnail fetch failed — continue without it
+    }
+  }
+
+  // ── mimetype (must be first, uncompressed) ────────────────────────────
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+  // ── META-INF/container.xml ────────────────────────────────────────────
+  zip.folder("META-INF").file("container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`);
+
+  // ── EPUB/content.opf ──────────────────────────────────────────────────
+  const thumbManifest = thumbBase64
+    ? `<item id="thumb" href="thumbnail.jpg" media-type="image/jpeg" properties="cover-image"/>`
+    : "";
+  const chapterManifest = chapters?.length > 0
+    ? `<item id="chapters" href="chapters.xhtml" media-type="application/xhtml+xml"/>`
+    : "";
+  const chapterSpine = chapters?.length > 0
+    ? `<itemref idref="chapters"/>`
+    : "";
+
+  zip.folder("EPUB").file("content.opf", `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">${uid}</dc:identifier>
+    <dc:title>${safeTitle}</dc:title>
+    <dc:creator>VerbatimYT by Kowsik Ratnagiri</dc:creator>
+    <dc:description>Transcript of YouTube video: ${safeTitle} by ${channel}</dc:description>
+    <dc:language>en</dc:language>
+    <dc:date>${date}</dc:date>
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z/, "Z")}</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+    ${thumbManifest}
+    ${chapterManifest}
+    <item id="transcript" href="transcript.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="cover"/>
+    ${chapterSpine}
+    <itemref idref="transcript"/>
+  </spine>
+</package>`);
+
+  // ── Add thumbnail image to zip ───────────────────────────────────────
+  if (thumbBase64) {
+    const thumbBytes = Uint8Array.from(atob(thumbBase64), c => c.charCodeAt(0));
+    zip.folder("EPUB").file("thumbnail.jpg", thumbBytes, { binary: true });
+  }
+
+  // ── EPUB/style.css ────────────────────────────────────────────────────
+  zip.folder("EPUB").file("style.css", `
+body { font-family: Georgia, serif; line-height: 1.8; margin: 2em; color: #1a1a1a; }
+h1 { font-size: 1.6em; color: #cc0000; line-height: 1.3; margin-bottom: 0.3em; }
+h2 { font-size: 1.2em; color: #cc0000; margin-top: 2em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }
+h3 { font-size: 1em; color: #333; }
+p { margin: 0.8em 0; text-align: justify; }
+.meta { color: #666; font-size: 0.85em; margin: 0.3em 0; }
+.stats { color: #999; font-size: 0.8em; font-style: italic; margin-top: 0.5em; }
+.chapter-time { color: #cc0000; font-weight: bold; font-family: monospace; }
+.chapter-list { list-style: none; padding: 0; }
+.chapter-list li { padding: 0.3em 0; border-bottom: 1px solid #f0f0f0; }
+a { color: #cc0000; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.cover { text-align: center; padding: 3em 1em; }
+.brand { color: #cc0000; font-size: 0.8em; font-family: monospace; margin-top: 3em; }
+`);
+
+  // ── EPUB/cover.xhtml ──────────────────────────────────────────────────
+  const videoLink = videoUrl
+    ? `<p><a href="${videoUrl}">▶ Watch on YouTube</a></p>`
+    : "";
+
+  const thumbImgTag = thumbBase64
+    ? `<img src="thumbnail.jpg" alt="${safeTitle}" style="width:100%;max-width:480px;border-radius:8px;margin-bottom:1.5em;"/>`
+    : "";
+
+  zip.folder("EPUB").file("cover.xhtml", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${safeTitle}</title><link rel="stylesheet" href="style.css"/></head>
+<body>
+  <div class="cover">
+    ${thumbImgTag}
+    <h1>${safeTitle}</h1>
+    <p class="meta">Channel: <strong>${channel}</strong></p>
+    <p class="meta">Date: ${new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" })}</p>
+    <p class="stats">${wordCount.toLocaleString()} words · ${readingMins} min read</p>
+    ${videoLink}
+    <p class="brand">VerbatimYT by Kowsik Ratnagiri</p>
+  </div>
+</body>
+</html>`);
+
+  // ── EPUB/chapters.xhtml (if chapters exist) ───────────────────────────
+  if (chapters && chapters.length > 0) {
+    const chapterItems = chapters.map(ch =>
+      `<li><span class="chapter-time">${ch.time}</span> &nbsp; ${ch.title}</li>`
+    ).join("\n    ");
+
+    zip.folder("EPUB").file("chapters.xhtml", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapters</title><link rel="stylesheet" href="style.css"/></head>
+<body>
+  <h2>Chapters</h2>
+  <ul class="chapter-list">
+    ${chapterItems}
+  </ul>
+</body>
+</html>`);
+  }
+
+  // ── EPUB/transcript.xhtml ─────────────────────────────────────────────
+  const paraHtml = paragraphs.map(p => `<p>${p.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>`).join("\n  ");
+
+  zip.folder("EPUB").file("transcript.xhtml", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Transcript</title><link rel="stylesheet" href="style.css"/></head>
+<body>
+  <h2>Transcript</h2>
+  ${paraHtml}
+</body>
+</html>`);
+
+  // ── EPUB/nav.xhtml ────────────────────────────────────────────────────
+  zip.folder("EPUB").file("nav.xhtml", `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Navigation</title></head>
+<body>
+  <nav epub:type="toc">
+    <ol>
+      <li><a href="cover.xhtml">Cover</a></li>
+      ${chapters?.length > 0 ? '<li><a href="chapters.xhtml">Chapters</a></li>' : ""}
+      <li><a href="transcript.xhtml">Transcript</a></li>
+    </ol>
+  </nav>
+</body>
+</html>`);
+
+  // ── Generate and download ─────────────────────────────────────────────
+  const blob = await zip.generateAsync({
+    type: "blob",
+    mimeType: "application/epub+zip",
+    compression: "DEFLATE",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9]/gi, "_").substring(0, 50)}_transcript.epub`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function buildDOCX(title, channel, fullText) {

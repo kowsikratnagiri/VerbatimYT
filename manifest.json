@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VerbatimYT",
-  "version": "3.0.0",
+  "version": "3.4.0",
   "description": "Export & translate YouTube transcripts as PDF, DOCX, or TXT. Built by Kowsik Ratnagiri.",
   "permissions": [
     "activeTab",
@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
-    "https://api.mymemory.translated.net/*"
+    "https://api.mymemory.translated.net/*",
+    "https://img.youtube.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -24,7 +25,8 @@
     {
       "resources": [
         "jspdf.min.js",
-        "docx.min.js"
+        "docx.min.js",
+        "jszip.min.js"
       ],
       "matches": [
         "https://www.youtube.com/*"
