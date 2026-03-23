@@ -10,6 +10,8 @@ const captionLangEl   = document.getElementById("captionLang");
 const translateLangEl = document.getElementById("translateLang");
 const keepTsEl    = document.getElementById("keepTimestamps");
 const tsPill      = document.getElementById("tsTogglePill");
+const rawModeEl   = document.getElementById("rawMode");
+const rawPill     = document.getElementById("rawTogglePill");
 
 let selectedFormat = "pdf";
 
@@ -23,6 +25,10 @@ document.querySelectorAll(".fmt-btn").forEach(btn => {
 
 keepTsEl.addEventListener("change", () => {
   tsPill.classList.toggle("active", keepTsEl.checked);
+});
+
+rawModeEl.addEventListener("change", () => {
+  rawPill.classList.toggle("active", rawModeEl.checked);
 });
 
 function setStatus(msg, type = "") {
@@ -242,6 +248,77 @@ function cleanTimestamps(text) {
     .trim();
 }
 
+// ── Format into readable paragraphs ───────────────────────────────────────
+function formatParagraphs(text) {
+  // Topic shift words that signal a new paragraph
+  const topicShifters = [
+    "Now,", "Now ", "So,", "So ", "But ", "But,",
+    "Let me", "Let's", "Moving on", "Next,", "Next ",
+    "Another ", "However,", "However ", "First,", "Second,",
+    "Third,", "Finally,", "Also,", "Also ", "And then",
+    "The thing is", "Here's the thing", "The point is",
+    "What I mean", "In other words", "For example",
+    "For instance", "That said", "Having said",
+    "On the other hand", "At the same time",
+    "The reason", "The problem", "The issue",
+    "What happens", "What we", "What you",
+    "I think", "I believe", "I want to", "I'm going to",
+    "We need to", "We have to", "We can",
+    "This is", "This means", "This is why",
+    "That's why", "That's the", "That's what",
+  ];
+
+  // Step 1: Fix punctuation — add periods where sentences likely end
+  // YouTube transcripts often have no punctuation
+  text = text
+    .replace(/([a-z])\s+([A-Z])/g, (m, a, b) => `${a}. ${b}`)  // lowercase then uppercase = new sentence
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Step 2: Split into sentences roughly
+  const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+
+  // Step 3: Group sentences into paragraphs
+  const paragraphs = [];
+  let current = [];
+  let charCount = 0;
+
+  for (const sentence of sentences) {
+    const s = sentence.trim();
+    if (!s) continue;
+
+    const startsNewParagraph = topicShifters.some(t =>
+      s.startsWith(t) || s.includes(`. ${t}`)
+    );
+
+    // Break paragraph if:
+    // 1. Current paragraph is long enough AND sentence starts a new topic
+    // 2. Current paragraph exceeds ~500 chars
+    // 3. Sentence starts with a question word after content
+    const isLong = charCount > 500;
+    const isQuestion = s.includes("?") && charCount > 200;
+
+    if ((startsNewParagraph && charCount > 200) || isLong || isQuestion) {
+      if (current.length > 0) {
+        paragraphs.push(current.join(" ").trim());
+        current = [];
+        charCount = 0;
+      }
+    }
+
+    current.push(s);
+    charCount += s.length;
+  }
+
+  // Push remaining
+  if (current.length > 0) {
+    paragraphs.push(current.join(" ").trim());
+  }
+
+  // Filter empty paragraphs
+  return paragraphs.filter(p => p.trim().length > 10);
+}
+
 async function getPageInfo(tab) {
   const r = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -302,7 +379,15 @@ async function getTranscript() {
     throw new Error(scraped?.error || "Could not read transcript. Make sure the video has captions and scroll down to the description first.");
   }
 
+  const rawMode = rawModeEl.checked;
   let text = keepTs ? scraped.text : cleanTimestamps(scraped.text);
+
+  // Format into paragraphs by default unless raw mode or timestamps are on
+  if (!rawMode && !keepTs) {
+    const paras = formatParagraphs(text);
+    text = paras.join("\n\n");
+  }
+
   if (!text || text.length < 10) throw new Error("Transcript appears to be empty.");
   if (translateTo) text = await translateText(text, translateTo);
 
@@ -400,20 +485,19 @@ function buildPDF(title, channel, fullText) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(30, 30, 30);
-  if (keepTsEl.checked) {
-    for (const line of fullText.split("\n")) {
-      const wrapped = doc.splitTextToSize(line, maxW);
-      for (const wl of wrapped) {
-        if (y + 6 > pageH - margin) { doc.addPage(); y = margin; }
-        doc.text(wl, margin, y); y += 6;
-      }
-      y += 1;
-    }
-  } else {
-    for (const line of doc.splitTextToSize(fullText, maxW)) {
+
+  // Split by double newline for paragraphs, single for timestamps
+  const isTimestampMode = keepTsEl.checked;
+  const sections = fullText.split("\n\n").filter(Boolean);
+
+  for (const section of sections) {
+    const lines = doc.splitTextToSize(section, maxW);
+    for (const line of lines) {
       if (y + 6 > pageH - margin) { doc.addPage(); y = margin; }
       doc.text(line, margin, y); y += 6;
     }
+    // Add paragraph spacing (extra gap between paragraphs)
+    if (sections.length > 1) y += 3;
   }
 
   const total = doc.internal.getNumberOfPages();
@@ -430,9 +514,23 @@ function buildPDF(title, channel, fullText) {
 async function buildDOCX(title, channel, fullText) {
   const { Document, Paragraph, TextRun, HeadingLevel, Packer, BorderStyle } = window.docx;
   const keepTs = keepTsEl.checked;
-  const bodyParagraphs = keepTs
-    ? fullText.split("\n").map(l => new Paragraph({ children: [new TextRun({ text: l, size: 22 })], spacing: { after: 80 } }))
-    : chunkText(fullText, 500).map(c => new Paragraph({ children: [new TextRun({ text: c, size: 22 })], spacing: { after: 120 } }));
+  let bodyParagraphs;
+  if (keepTs) {
+    // Timestamp mode — one line per segment
+    bodyParagraphs = fullText.split("\n").map(l =>
+      new Paragraph({ children: [new TextRun({ text: l, size: 22 })], spacing: { after: 80 } })
+    );
+  } else if (fullText.includes("\n\n")) {
+    // Paragraph mode — already formatted with double newlines
+    bodyParagraphs = fullText.split("\n\n").filter(Boolean).map(para =>
+      new Paragraph({ children: [new TextRun({ text: para.replace(/\n/g, " "), size: 22 })], spacing: { after: 200 } })
+    );
+  } else {
+    // Raw mode — chunk into paragraphs
+    bodyParagraphs = chunkText(fullText, 500).map(c =>
+      new Paragraph({ children: [new TextRun({ text: c, size: 22 })], spacing: { after: 120 } })
+    );
+  }
 
   const doc = new Document({ sections: [{ properties: {}, children: [
     new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }),
