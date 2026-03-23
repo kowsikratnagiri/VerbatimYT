@@ -1,20 +1,23 @@
 # VerbatimYT
 
-> Export & translate YouTube transcripts as PDF, DOCX, or TXT — in one click.
+> Export & translate YouTube transcripts as PDF, EPUB, DOCX, or TXT — in one click.
 
-**Built by Kowsik Ratnagiri** &nbsp;|&nbsp; ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Version](https://img.shields.io/badge/version-3.2-red) ![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Firefox-blue)
+**Built by Kowsik Ratnagiri** &nbsp;|&nbsp; ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Version](https://img.shields.io/badge/version-3.4-red) ![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Firefox-blue)
 
 ---
 
 ## Features
 
-- 📄 **Export as PDF** — Clean A4 formatted document with title, channel, and date
+- 📄 **Export as PDF** — Clean A4 formatted document with title, channel, date, word count, reading time and clickable video link
+- 📖 **Export as EPUB** — E-reader ready format with video thumbnail as cover page and reading time
 - 📝 **Export as DOCX** — Properly formatted Word document
 - 📃 **Export as TXT** — Plain text with header block
 - 🌐 **Translate transcript** — 20 languages including Hindi, Spanish, French, Arabic, Chinese, Japanese and more
 - ⏱️ **Timestamp toggle** — Keep or remove timestamps from the export
 - 📋 **Copy to clipboard** — One click copy without downloading a file
 - 🔄 **Auto-detect captions** — Automatically opens transcript panel and reads content
+- 📑 **Paragraph formatter** — Transcript formatted into readable paragraphs by default
+- 🎨 **Oceanic theme** — Switch between red and teal accent in the popup
 - 🛡️ **Works on Chrome & Firefox**
 
 ---
@@ -48,7 +51,7 @@
    - **Caption language** — auto-detected
    - **Translate to** — pick a target language (optional)
    - **Keep timestamps** — toggle on/off
-   - **Export format** — PDF, DOCX, or TXT
+   - **Export format** — PDF, EPUB, DOCX, or TXT
 4. Click **Export** or **📋 Copy**
 5. File downloads automatically ✅
 
@@ -83,6 +86,7 @@ Uses the [MyMemory API](https://mymemory.translated.net/) — free, no API key n
 - **Manifest V3** — Chrome & Firefox compatible
 - **jsPDF** — PDF generation (bundled, no CDN)
 - **docx.js** — DOCX generation (bundled, no CDN)
+- **JSZip** — EPUB generation (bundled, no CDN)
 - **MyMemory API** — Free translation
 - **YouTube transcript panel DOM** — No YouTube API key needed
 
@@ -100,6 +104,7 @@ Built with ☕ and too many YouTube videos.
 
 | Version | Changes |
 |---------|---------|
+| v3.4 | EPUB with thumbnail cover, clickable PDF title, word count, chapter markers, paragraph formatter, oceanic theme, bug fixes |
 | v3.2 | Updated for YouTube 2026 UI, fixed timestamp parsing, debug mode |
 | v3.0 | Added DOCX, TXT, translation, timestamp toggle, copy to clipboard |
 | v1.0 | Initial release — PDF export only |
